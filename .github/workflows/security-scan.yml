@@ -1,0 +1,55 @@
+name: DevSecOps Security Pipeline
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks (secret scanning)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install --omit=dev --legacy-peer-deps || true
+      - name: Run npm audit (dependency vulnerability scan)
+        run: npm audit --audit-level=high || true
+
+  sast-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep (static code analysis)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/owasp-top-ten
+
+  container-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t juice-shop-local:scan .
+      - name: Run Trivy (container image scan)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'juice-shop-local:scan'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
